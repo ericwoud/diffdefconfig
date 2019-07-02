@@ -23,6 +23,8 @@ elif [ $# == 3 ]; then
   fi
 else
   echo
+  echo "Be carefull: current kernel's .config will be lost!"
+  echo
   echo "Usage: diffdefconfig [-d DEFCONFIG] [SOURCE] TARGET"
   echo
   echo "Current directory must be in root of kernel."

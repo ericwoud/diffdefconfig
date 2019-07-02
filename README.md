@@ -1,5 +1,7 @@
 # Compares .config files, list changes except kconfig's defaults.
 
+Be carefull: current kernel's .config will be lost!
+
 Usage: diffdefconfig [-d DEFCONFIG] [SOURCE] TARGET
 
 Current directory must be in root of kernel.
