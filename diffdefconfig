@@ -1,0 +1,170 @@
+#!/bin/bash
+
+DEFCONFIG="mvebu_v7_defconfig"
+ARCH="arm"
+WORK="./diffdef"
+
+mkdir -p $WORK
+
+if [ $# == 1 ]; then
+  CONFIG[2]=$1
+  CONFIG[1]=$WORK/$DEFCONFIG.config
+  make ARCH=$ARCH $DEFCONFIG
+  cp .config ${CONFIG[1]}
+elif [ $# == 2 ]; then
+  CONFIG[1]=$1
+  CONFIG[2]=$2
+elif [ $# == 3 ]; then
+  if [ $1 == "-d" ]; then
+    CONFIG[2]=$3
+    CONFIG[1]=$WORK/$2.config
+    make ARCH=$ARCH $2
+    cp .config ${CONFIG[1]}
+  fi
+else
+  echo
+  echo "Usage: diffdefconfig [-d DEFCONFIG] [SOURCE] TARGET"
+  echo
+  echo "Current directory must be in root of kernel."
+  echo
+  echo "If no SOURCE specified then source will be a .config made from" 
+  echo "defconfig set by the -d option (default = mvebu_v7_defconfig)."
+  echo
+  echo "Example: 'diffdefconfig myconfig.config', result in diff_defconfig"
+  echo "You can use the diff_defconfig file as follows:"
+  echo
+  echo "cp arch/arm/configs/mvebu_v7_defconfig arch/arm/configs/merged_defconfig"
+  echo "cat diffdef/diff_defconfig           >>arch/arm/configs/merged_defconfig"
+  echo "make ARCH=arm merged_defconfig"
+  echo
+  echo "The resulting .config will be the same as the original myconfig.config."
+  echo
+  echo "Example: 'diffdefconfig myconfig1.config myconfig2.config'"
+  echo
+  echo "Compares .config files, list changes except kconfig's defaults."
+  exit
+fi
+filename=$WORK/allyes.config
+
+###################################################################
+# Make diffconfig2, it is litte different from scripts/diffconfig #
+###################################################################
+cp ./scripts/diffconfig $WORK/diffconfig2
+patch -d $WORK/ -p1 -N -r - <<'EOF'
+--- ./diffconfig2	2019-06-28 21:17:51.712841593 +0200
++++ ./diffconfig2	2019-06-28 21:17:00.112308932 +0200
+@@ -59,2 +59,5 @@
+                 print("CONFIG_%s=%s" % (config, new_value))
++        else:                                            #########
++            if op=="-":                                  # ADDED #
++                print("# CONFIG_%s is not set" % config) #########
+     else:
+EOF
+
+##################################
+# Make allyes.config with extras #
+##################################
+cat << 'END_OF_FILE' >$WORK/allyesextra
+CONFIG_CMDLINE="yes"
+CONFIG_CMDLINE_FORCE=y
+# CONFIG_LOCALVERSION_AUTO is not set
+CONFIG_COMPILE_TEST=n
+END_OF_FILE
+make KCONFIG_ALLCONFIG=$WORK/allyesextra ARCH=$ARCH allyesconfig
+cp ./.config $filename
+
+###################################
+# Make diff_defconfig_unformatted #
+###################################
+for i in {1..2}
+do
+  cp ${CONFIG[$i]} .config
+  make ARCH=$ARCH oldconfig
+  make ARCH=$ARCH savedefconfig
+  cp ./defconfig "$WORK/config"$i"_defconfig"
+  cp ./.config   "$WORK/config"$i".config"
+done
+$WORK/diffconfig2 -m $WORK/config1_defconfig $WORK/config2_defconfig >$WORK/diff_defconfig_unformatted
+
+######################################################
+# Check if diff_defconfig_unformatted actually works #
+######################################################
+cp $WORK/config1_defconfig ./arch/$ARCH/configs/testmerged_defconfig
+cat $WORK/diff_defconfig_unformatted >>./arch/$ARCH/configs/testmerged_defconfig
+make ARCH=$ARCH testmerged_defconfig
+echo PRINTING DIFFERENCES diff_defconfig_unformatted, SHOULD BE NONE
+./scripts/diffconfig $WORK/config2.config ./.config
+echo PRINTING DIFFERENCES diff_defconfig_unformatted, DONE
+rm -f ./arch/$ARCH/configs/testmerged_defconfig
+
+#############################
+# Format the diff_defconfig #
+#############################
+countconfig=0
+reading='desc-first'
+firstdescr=true
+while read line; do
+  [[ -z "$line" ]] && line='&'
+  case $reading in
+  'desc-first')
+    reading='description'
+    descr=$line
+    ;;
+  'description')
+    if [[ "$line" != "#" ]]; then
+      descr=$descr"\n"$line
+    else
+      reading='configs'
+    fi
+    ;;
+  'configs')
+    if [[ "$line" != "&" ]]; then
+      if [[ ${line:0:7} == 'CONFIG_' ]]; then
+        string="${line%%=*}"            # remove all text after DOT and store in variable s
+        line=${line:0:${#string}}
+      elif [[ ${line:0:9} == '# CONFIG_' ]]; then
+        line=${line%' is not set'}
+        line=${line:2}
+      fi
+      lineout=$(grep "$line[ =]" $WORK/diff_defconfig_unformatted)
+      if [ -n "$lineout" ]; then
+        if [ -n "$descr" ]; then
+          echo -e "\n$descr\n#" >>$WORK/diff_defconfig
+          descr=""
+        fi
+        echo "$lineout" >>$WORK/diff_defconfig
+        countconfig=$((countconfig+1))
+        echo Formatting line nr: $countconfig
+        tput cuu1
+      fi
+    else
+      if [[ $firstdescr == true ]]; then
+        echo -e "#\n# diff_defconfig file build by https://github.com/ericwoud/diffdefconfig.git" >$WORK/diff_defconfig
+        echo -e "$descr\n#" >>$WORK/diff_defconfig
+        descr=""
+        firstdescr=false
+      fi
+      reading='desc-first'
+    fi
+    ;;
+  esac
+done < $filename
+echo PRINTING DIFFERENCES check formatting, SHOULD BE NONE
+$WORK/diffconfig2 $WORK/diff_defconfig_unformatted $WORK/diff_defconfig
+echo PRINTING DIFFERENCES check formatting, DONE
+
+##########################################
+# Check if diff_defconfig actually works #
+##########################################
+cp $WORK/config1_defconfig ./arch/$ARCH/configs/testmerged_defconfig
+cat $WORK/diff_defconfig >>./arch/$ARCH/configs/testmerged_defconfig
+make ARCH=$ARCH testmerged_defconfig
+echo PRINTING DIFFERENCES diff_defconfig, SHOULD BE NONE
+./scripts/diffconfig $WORK/config2.config ./.config
+echo PRINTING DIFFERENCES diff_defconfig, DONE
+rm -f ./arch/$ARCH/configs/testmerged_defconfig
+
+echo -e "\nALL DONE. IF NO DIFFERENCES PRINTED YOU CAN USE $WORK/diff_defconfig"
+
+exit 0
+
