@@ -63,9 +63,10 @@ patch -d $WORK/ -p1 -N -r - <<'EOF'
      else:
 EOF
 
-##################################
-# Make allyes.config with extras #
-##################################
+######################################
+# Make allyes.config with extras     #
+# Add more allyes extras below 'cat' #
+######################################
 cat << 'END_OF_FILE' >$WORK/allyesextra
 CONFIG_CMDLINE="yes"
 CONFIG_CMDLINE_FORCE=y
@@ -154,6 +155,8 @@ done < $filename
 echo PRINTING DIFFERENCES check formatting, SHOULD BE NONE
 $WORK/diffconfig2 $WORK/diff_defconfig_unformatted $WORK/diff_defconfig
 echo PRINTING DIFFERENCES check formatting, DONE
+echo If there are differences found you need to add the CONFIG_* to the 
+echo allyes extras inside the script with any value, the value is not used.
 
 ##########################################
 # Check if diff_defconfig actually works #
