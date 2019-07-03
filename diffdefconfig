@@ -46,11 +46,10 @@ else
   echo "Compares .config files, list changes except kconfig's defaults."
   exit
 fi
-filename=$WORK/allyes.config
 
-###################################################################
-# Make diffconfig2, it is litte different from scripts/diffconfig #
-###################################################################
+###########################################################################
+# Make diffconfig2/3, they are a little different from scripts/diffconfig #
+###########################################################################
 cp ./scripts/diffconfig $WORK/diffconfig2
 patch -d $WORK/ -p1 -N -r - <<'EOF'
 --- ./diffconfig2	2019-06-28 21:17:51.712841593 +0200
@@ -62,17 +61,28 @@ patch -d $WORK/ -p1 -N -r - <<'EOF'
 +                print("# CONFIG_%s is not set" % config) #########
      else:
 EOF
+cp ./scripts/diffconfig $WORK/diffconfig3
+patch -d $WORK/ -p1 -N -r - <<'EOF'
+--- ./diffconfig3	2019-06-28 21:17:51.712841593 +0200
++++ ./diffconfig3	2019-06-28 21:17:00.112308932 +0200
+@@ -54,3 +54,3 @@
+     if merge_style:
+-        if new_value:
++        if new_value and op=="->":   ### CHANGED ###
+             if new_value=="n":
+EOF
 
 ######################################
 # Make allyes.config with extras     #
 # Add more allyes extras below 'cat' #
 ######################################
-cat << 'END_OF_FILE' >$WORK/allyesextra
+filename=$WORK/allyes.config
+cat >$WORK/allyesextra <<'EOF'
 CONFIG_CMDLINE="yes"
 CONFIG_CMDLINE_FORCE=y
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_COMPILE_TEST=n
-END_OF_FILE
+EOF
 make KCONFIG_ALLCONFIG=$WORK/allyesextra ARCH=$ARCH allyesconfig
 cp ./.config $filename
 
@@ -90,19 +100,27 @@ done
 $WORK/diffconfig2 -m $WORK/config1_defconfig $WORK/config2_defconfig >$WORK/diff_defconfig_unformatted
 
 ######################################################
+# Add choices #
+######################################################
+cp $WORK/config1_defconfig ./arch/$ARCH/configs/testmerged_defconfig
+cat $WORK/diff_defconfig_unformatted >>./arch/$ARCH/configs/testmerged_defconfig
+make ARCH=$ARCH testmerged_defconfig
+$WORK/diffconfig3 -m ./.config $WORK/config2.config >>$WORK/diff_defconfig_unformatted
+
+######################################################
 # Check if diff_defconfig_unformatted actually works #
 ######################################################
 cp $WORK/config1_defconfig ./arch/$ARCH/configs/testmerged_defconfig
 cat $WORK/diff_defconfig_unformatted >>./arch/$ARCH/configs/testmerged_defconfig
 make ARCH=$ARCH testmerged_defconfig
 echo PRINTING DIFFERENCES diff_defconfig_unformatted, SHOULD BE NONE
-./scripts/diffconfig $WORK/config2.config ./.config
+./scripts/diffconfig ./.config $WORK/config2.config
 echo PRINTING DIFFERENCES diff_defconfig_unformatted, DONE
 rm -f ./arch/$ARCH/configs/testmerged_defconfig
 
-#############################
-# Format the diff_defconfig #
-#############################
+###############################################################################
+# Format the diff_defconfig, uses allyes.config, if not perfect, needs extras #
+###############################################################################
 countconfig=0
 reading='desc-first'
 firstdescr=true
@@ -155,8 +173,8 @@ done < $filename
 echo PRINTING DIFFERENCES check formatting, SHOULD BE NONE
 $WORK/diffconfig2 $WORK/diff_defconfig_unformatted $WORK/diff_defconfig
 echo PRINTING DIFFERENCES check formatting, DONE
-echo If there are differences found you need to add the CONFIG_* to the 
-echo allyes extras inside the script with any value, the value is not used.
+echo If there are differences after formatting found, you need to add the CONFIG_* 
+echo to the allyes extras inside the script with any value. The value is not used.
 
 ##########################################
 # Check if diff_defconfig actually works #
@@ -165,7 +183,7 @@ cp $WORK/config1_defconfig ./arch/$ARCH/configs/testmerged_defconfig
 cat $WORK/diff_defconfig >>./arch/$ARCH/configs/testmerged_defconfig
 make ARCH=$ARCH testmerged_defconfig
 echo PRINTING DIFFERENCES diff_defconfig, SHOULD BE NONE
-./scripts/diffconfig $WORK/config2.config ./.config
+$WORK/diffconfig2 ./.config $WORK/config2.config
 echo PRINTING DIFFERENCES diff_defconfig, DONE
 rm -f ./arch/$ARCH/configs/testmerged_defconfig
 
