@@ -92,7 +92,7 @@ cp ./.config $filename
 for i in {1..2}
 do
   cp ${CONFIG[$i]} .config
-  make ARCH=$ARCH oldconfig
+  make ARCH=$ARCH olddefconfig
   make ARCH=$ARCH savedefconfig
   cp ./defconfig "$WORK/config"$i"_defconfig"
   cp ./.config   "$WORK/config"$i".config"
@@ -122,54 +122,85 @@ rm -f ./arch/$ARCH/configs/testmerged_defconfig
 # Format the diff_defconfig, uses allyes.config, if not perfect, needs extras #
 ###############################################################################
 countconfig=0
-reading='desc-first'
-firstdescr=true
+echo -e "#\n# diff_defconfig file build by:\n#   https://github.com/ericwoud/diffdefconfig.git" >$WORK/diff_defconfig
 while read line; do
-  [[ -z "$line" ]] && line='&'
-  case $reading in
-  'desc-first')
-    reading='description'
-    descr=$line
-    ;;
-  'description')
-    if [[ "$line" != "#" ]]; then
-      descr=$descr"\n"$line
-    else
-      reading='configs'
-    fi
-    ;;
-  'configs')
-    if [[ "$line" != "&" ]]; then
+    if [[ ! -z "$line" ]]; then
+      string=""
       if [[ ${line:0:7} == 'CONFIG_' ]]; then
         string="${line%%=*}"            # remove all text after DOT and store in variable s
-        line=${line:0:${#string}}
       elif [[ ${line:0:9} == '# CONFIG_' ]]; then
-        line=${line%' is not set'}
-        line=${line:2}
+        string=${line%' is not set'}
+        string=${string:2}
       fi
-      lineout=$(grep "$line[ =]" $WORK/diff_defconfig_unformatted)
-      if [ -n "$lineout" ]; then
-        if [ -n "$descr" ]; then
-          echo -e "\n$descr\n#" >>$WORK/diff_defconfig
-          descr=""
+      if [[ ! -z "$string" ]]; then
+        lineout=$(grep "$string[ =]" $WORK/diff_defconfig_unformatted)
+        if [ -n "$lineout" ]; then
+          echo -e "$lineout" >>$WORK/diff_defconfig
+          countconfig=$((countconfig+1))
+          echo Formatting line nr: $countconfig
+          tput cuu1 # scroll up
         fi
-        echo "$lineout" >>$WORK/diff_defconfig
-        countconfig=$((countconfig+1))
-        echo Formatting line nr: $countconfig
-        tput cuu1
+      else
+        echo -e "$line" >>$WORK/diff_defconfig
       fi
     else
-      if [[ $firstdescr == true ]]; then
-        echo -e "#\n# diff_defconfig file build by https://github.com/ericwoud/diffdefconfig.git" >$WORK/diff_defconfig
-        echo -e "$descr\n#" >>$WORK/diff_defconfig
-        descr=""
-        firstdescr=false
-      fi
-      reading='desc-first'
+      echo -e "" >>$WORK/diff_defconfig
     fi
-    ;;
-  esac
 done < $filename
+
+#######################################################################
+# Clean up the diff_defconfig, leave out the comments with no options #
+#######################################################################
+while [[ $changed != "false" ]]; do
+  changed="false"
+  readarray -t fileout < $WORK/diff_defconfig
+  for (( i=3; i<${#fileout[@]}; i++ ))
+  do  
+    if [[ ${fileout[i-3]} == '#' ]]; then
+      if [[ ${fileout[i-2]:0:2} == '# ' ]]; then
+        if [[ ${fileout[i-1]} == '#' ]]; then
+          endof='# end of'${fileout[i-2]/'#'}
+          if [[ ${fileout[i]} == "$endof" ]]; then
+            fileout[i-3]="&"
+            fileout[i-2]="&"
+            fileout[i-1]="&"
+            fileout[i]="&"
+            changed="true"
+          elif [[ ${fileout[i]:0:7} != 'CONFIG_' ]]  && [[ ${fileout[i]:0:9} != '# CONFIG_' ]]; then
+            test="$(grep -F "$endof" $WORK/diff_defconfig)"
+            if [ -z "$test" ] || [[ ${fileout[i-2]} == '# Boot options' ]]; then
+              fileout[i-3]="&"
+              fileout[i-2]="&"
+              fileout[i-1]="&"
+              changed="true"
+            fi
+          fi
+        fi
+      fi
+    fi
+    if [[ ${fileout[i-1]} == '' ]]; then
+      if [[ ${fileout[i]} == '' ]]; then
+        fileout[i-1]="&"
+        changed="true"
+      elif [[ ${fileout[i]:0:9} == '# end of ' ]]; then
+        fileout[i-1]="&"
+        changed="true"
+      elif [[ ${fileout[i-2]:0:7} == 'CONFIG_' ]]  || [[ ${fileout[i-2]:0:9} == '# CONFIG_' ]]; then
+        if [[ ${fileout[i]:0:7} == 'CONFIG_' ]]  || [[ ${fileout[i]:0:9} == '# CONFIG_' ]]; then
+          fileout[i-1]="&"
+          changed="true"
+        fi
+      fi
+    fi
+  done  
+  echo -e -n "" >$WORK/diff_defconfig
+  for lineout in "${fileout[@]}"; do
+    if [[ "$lineout" != "&" ]]; then
+     echo -e "$lineout" >>$WORK/diff_defconfig
+    fi
+  done
+done
+
 echo PRINTING DIFFERENCES check formatting, SHOULD BE NONE
 $WORK/diffconfig2 $WORK/diff_defconfig_unformatted $WORK/diff_defconfig
 echo PRINTING DIFFERENCES check formatting, DONE
