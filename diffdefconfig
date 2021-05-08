@@ -1,7 +1,7 @@
 #!/bin/bash
 
-DEFCONFIG="mvebu_v7_defconfig"
-ARCH="arm"
+DEFCONFIG="defconfig"
+ARCH="arm64"
 WORK="./diffdef"
 
 mkdir -p $WORK
@@ -22,6 +22,7 @@ elif [ $# == 3 ]; then
     cp .config ${CONFIG[1]}
   fi
 else
+  echo "First set the correct ARCH=..."
   echo
   echo "Be carefull: current kernel's .config will be lost!"
   echo
@@ -30,9 +31,9 @@ else
   echo "Current directory must be in root of kernel."
   echo
   echo "If no SOURCE specified then source will be a .config made from" 
-  echo "defconfig set by the -d option (default = mvebu_v7_defconfig)."
+  echo "defconfig set by the -d option (default = defconfig)."
   echo
-  echo "Example: 'diffdefconfig myconfig.config', result in diff_defconfig"
+  echo "Example: 'diffdefconfig -d mvebu_v7_defconfig myconfig.config', result in diff_defconfig"
   echo "You can use the diff_defconfig file as follows:"
   echo
   echo "cp arch/arm/configs/mvebu_v7_defconfig arch/arm/configs/merged_defconfig"
@@ -82,6 +83,8 @@ CONFIG_CMDLINE="yes"
 CONFIG_CMDLINE_FORCE=y
 # CONFIG_LOCALVERSION_AUTO is not set
 CONFIG_COMPILE_TEST=n
+CONFIG_PREEMPT=y
+CONFIG_CPU_BIG_ENDIAN=n
 EOF
 make KCONFIG_ALLCONFIG=$WORK/allyesextra ARCH=$ARCH allyesconfig
 cp ./.config $filename
